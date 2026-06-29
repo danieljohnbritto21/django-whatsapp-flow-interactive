@@ -1,0 +1,69 @@
+{% extends "dashboard/base.html" %}
+
+{% block content %}
+<div class="d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-2 mb-3 border-bottom">
+    <h1 class="h2">{{ page_title }}</h1>
+</div>
+
+<div class="row">
+    <div class="col-lg-6 mb-4">
+        <h4><i class="bi bi-chat-dots"></i> Latest Messages</h4>
+        <div class="list-group">
+            {% for msg in latest_messages %}
+            <a href="{% url 'dashboard:user_detail' msg.phone_number %}" class="list-group-item list-group-item-action">
+                <div class="d-flex w-100 justify-content-between">
+                    <h6 class="mb-1">
+                        {% if msg.direction == 'IN' %}<i class="bi bi-arrow-down-left-circle text-primary"></i> From{% else %}<i class="bi bi-arrow-up-right-circle text-success"></i> To{% endif %}: {{ msg.phone_number }}
+                    </h6>
+                    <small>{{ msg.timestamp|timesince }} ago</small>
+                </div>
+                <p class="mb-1 text-muted small">{{ msg.content|truncatechars:80 }}</p>
+            </a>
+            {% endfor %}
+        </div>
+    </div>
+
+    <div class="col-lg-6 mb-4">
+        <h4><i class="bi bi-credit-card"></i> Latest Payment Updates</h4>
+        <div class="list-group">
+            {% for donation in latest_payments %}
+            <a href="{% url 'dashboard:user_detail' donation.whatsapp_phone_number %}" class="list-group-item list-group-item-action">
+                <div class="d-flex w-100 justify-content-between">
+                    <h6 class="mb-1">₹{{ donation.amount }} by {{ donation.full_name }}</h6>
+                    <small>{{ donation.updated_at|timesince }} ago</small>
+                </div>
+                <p class="mb-1">
+                    <span class="badge {% if donation.payment_status == 'COMPLETED' %}bg-success{% elif donation.payment_status == 'FAILED' %}bg-danger{% else %}bg-info{% endif %}">
+                        {{ donation.get_payment_status_display }}
+                    </span>
+                    <small class="text-muted">{{ donation.reference_number }}</small>
+                </p>
+            </a>
+            {% endfor %}
+        </div>
+    </div>
+
+    <div class="col-lg-6 mb-4">
+        <h4><i class="bi bi-cloud-arrow-down"></i> Latest Webhook Events</h4>
+        <div class="list-group">
+            {% for log in latest_webhooks %}
+            <div class="list-group-item">
+                <div class="d-flex w-100 justify-content-between">
+                    <h6 class="mb-1">Webhook ID: {{ log.webhook_id|truncatechars:15 }}</h6>
+                    <small>{{ log.created_at|timesince }} ago</small>
+                </div>
+                <p class="mb-1">
+                    {% if log.processed %}
+                        <span class="badge bg-success">Processed</span>
+                    {% elif log.error_message %}
+                        <span class="badge bg-danger">Error</span>
+                    {% else %}
+                        <span class="badge bg-secondary">Received</span>
+                    {% endif %}
+                </p>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+</div>
+{% endblock %}

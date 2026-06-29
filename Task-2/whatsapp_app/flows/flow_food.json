@@ -1,0 +1,358 @@
+{
+  "version": "6.0",
+  "data_api_version": "3.0",
+  "routing_model": {
+    "FOOD_LIST": ["FOOD_DONOR_INFO"],
+    "FOOD_DONOR_INFO": ["FOOD_PACKAGES", "FOOD_REVIEW"],
+    "FOOD_PACKAGES": ["FOOD_REVIEW"],
+    "FOOD_REVIEW": []
+  },
+  "screens": [
+    {
+      "id": "FOOD_LIST",
+      "title": "🍛 Food Donation",
+      "terminal": false,
+      "data": {
+        "food_items": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "id": { "type": "string" },
+              "name": { "type": "string" },
+              "price": { "type": "string" },
+              "unit": { "type": "string" },
+              "label": { "type": "string" }
+            }
+          },
+          "__example__": []
+        },
+        "qty_options": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "id": { "type": "string" },
+              "title": { "type": "string" }
+            }
+          },
+          "__example__": []
+        }
+      },
+      "layout": {
+        "type": "SingleColumnLayout",
+        "children": [
+          {
+            "type": "Form",
+            "name": "food_form",
+            "children": [
+              {
+                "type": "TextHeading",
+                "text": "Select Food Items"
+              },
+              {
+                "type": "TextBody",
+                "text": "Choose the quantity for each item you wish to donate. The total will be calculated automatically."
+              },
+              {
+                "type": "DynamicForm",
+                "name": "food_form",
+                "data-source": "${data.food_items}",
+                "children": [
+                  {
+                    "type": "Dropdown",
+                    "name": "food_qty",
+                    "label": "${item.label}",
+                    "data-source": "${data.qty_options}",
+                    "required": false
+                  }
+                ]
+              },
+              {
+                "type": "Footer",
+                "label": "Continue →",
+                "on-click-action": {
+                  "name": "data_exchange",
+                  "payload": {
+                    "food_form": "${form.food_form}"
+                  }
+                }
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "FOOD_DONOR_INFO",
+      "title": "👤 Donor Information",
+      "terminal": false,
+      "data": {
+        "selected_items": { "type": "string", "__example__": "[]" },
+        "food_total": { "type": "string", "__example__": "0" },
+        "summary_text": { "type": "string", "__example__": "" },
+        "package_interest_options": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "id": { "type": "string" },
+              "title": { "type": "string" }
+            }
+          },
+          "__example__": []
+        }
+      },
+      "layout": {
+        "type": "SingleColumnLayout",
+        "children": [
+          {
+            "type": "Form",
+            "name": "donor_form",
+            "children": [
+              {
+                "type": "TextHeading",
+                "text": "Your Information"
+              },
+              {
+                "type": "TextSubheading",
+                "text": "Donation Summary"
+              },
+              {
+                "type": "TextBody",
+                "text": "${data.summary_text}"
+              },
+              {
+                "type": "TextInput",
+                "name": "donor_name",
+                "label": "Full Name *",
+                "required": true,
+                "input-type": "text"
+              },
+              {
+                "type": "TextInput",
+                "name": "donor_email",
+                "label": "Email Address *",
+                "required": true,
+                "input-type": "email"
+              },
+              {
+                "type": "TextInput",
+                "name": "donor_whatsapp",
+                "label": "WhatsApp Number *",
+                "required": true,
+                "input-type": "phone"
+              },
+              {
+                "type": "TextInput",
+                "name": "donor_instagram",
+                "label": "Instagram ID (Optional)",
+                "required": false,
+                "input-type": "text"
+              },
+              {
+                "type": "RadioButtonsGroup",
+                "name": "package_interest",
+                "label": "Add optional packages?",
+                "data-source": "${data.package_interest_options}",
+                "required": true
+              },
+              {
+                "type": "Footer",
+                "label": "Continue →",
+                "on-click-action": {
+                  "name": "data_exchange",
+                  "payload": {
+                    "donor_name": "${form.donor_name}",
+                    "donor_email": "${form.donor_email}",
+                    "donor_whatsapp": "${form.donor_whatsapp}",
+                    "donor_instagram": "${form.donor_instagram}",
+                    "package_interest": "${form.package_interest}",
+                    "selected_items": "${data.selected_items}",
+                    "food_total": "${data.food_total}"
+                  }
+                }
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "FOOD_PACKAGES",
+      "title": "🎁 Optional Packages",
+      "terminal": false,
+      "data": {
+        "donor_name": { "type": "string", "__example__": "" },
+        "donor_email": { "type": "string", "__example__": "" },
+        "donor_whatsapp": { "type": "string", "__example__": "" },
+        "donor_instagram": { "type": "string", "__example__": "" },
+        "selected_items": { "type": "string", "__example__": "[]" },
+        "food_total": { "type": "string", "__example__": "0" },
+        "package_options": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "id": { "type": "string" },
+              "title": { "type": "string" }
+            }
+          },
+          "__example__": []
+        },
+        "has_packages": { "type": "boolean", "__example__": false }
+      },
+      "layout": {
+        "type": "SingleColumnLayout",
+        "children": [
+          {
+            "type": "Form",
+            "name": "package_form",
+            "children": [
+              {
+                "type": "TextHeading",
+                "text": "Add Optional Packages"
+              },
+              {
+                "type": "TextBody",
+                "text": "Enhance your donation with these optional add-ons. Select any you'd like to include."
+              },
+              {
+                "type": "CheckboxGroup",
+                "name": "selected_packages",
+                "label": "Available Packages",
+                "data-source": "${data.package_options}",
+                "required": false
+              },
+              {
+                "type": "Footer",
+                "label": "Review Donation →",
+                "on-click-action": {
+                  "name": "data_exchange",
+                  "payload": {
+                    "selected_packages": "${form.selected_packages}",
+                    "donor_name": "${data.donor_name}",
+                    "donor_email": "${data.donor_email}",
+                    "donor_whatsapp": "${data.donor_whatsapp}",
+                    "donor_instagram": "${data.donor_instagram}",
+                    "selected_items": "${data.selected_items}",
+                    "food_total": "${data.food_total}"
+                  }
+                }
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "FOOD_REVIEW",
+      "title": "📋 Review & Pay",
+      "terminal": true,
+      "data": {
+        "donor_name": { "type": "string", "__example__": "" },
+        "donor_email": { "type": "string", "__example__": "" },
+        "donor_whatsapp": { "type": "string", "__example__": "" },
+        "donor_instagram": { "type": "string", "__example__": "" },
+        "selected_items": { "type": "string", "__example__": "[]" },
+        "selected_packages": { "type": "string", "__example__": "[]" },
+        "food_total": { "type": "string", "__example__": "0" },
+        "pkg_total": { "type": "string", "__example__": "0" },
+        "grand_total": { "type": "string", "__example__": "0" },
+        "review_text": { "type": "string", "__example__": "" },
+        "flow_type": { "type": "string", "__example__": "FOOD" }
+      },
+      "layout": {
+        "type": "SingleColumnLayout",
+        "children": [
+          {
+            "type": "Form",
+            "name": "review_form",
+            "children": [
+              {
+                "type": "TextHeading",
+                "text": "Confirm Your Donation"
+              },
+              {
+                "type": "TextBody",
+                "text": "${data.review_text}"
+              },
+              {
+                "type": "TextBody",
+                "text": "\nDonor: ${data.donor_name}\nEmail: ${data.donor_email}\nWhatsApp: ${data.donor_whatsapp}"
+              },
+              {
+                "type": "OptIn",
+                "name": "confirm_donation",
+                "label": "I confirm the above details are correct",
+                "required": true
+              },
+              {
+                "type": "Footer",
+                "label": "❤️ Confirm & Pay ₹${data.grand_total}",
+                "on-click-action": {
+                  "name": "complete",
+                  "payload": {
+                    "donor_name": "${data.donor_name}",
+                    "donor_email": "${data.donor_email}",
+                    "donor_whatsapp": "${data.donor_whatsapp}",
+                    "donor_instagram": "${data.donor_instagram}",
+                    "selected_items": "${data.selected_items}",
+                    "selected_packages": "${data.selected_packages}",
+                    "food_total": "${data.food_total}",
+                    "pkg_total": "${data.pkg_total}",
+                    "grand_total": "${data.grand_total}",
+                    "flow_type": "${data.flow_type}"
+                  }
+                }
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "SUCCESS",
+      "title": "✅ Success",
+      "terminal": true,
+      "data": {},
+      "layout": {
+        "type": "SingleColumnLayout",
+        "children": [
+          {
+            "type": "TextHeading",
+            "text": "Processing Donation..."
+          },
+          {
+            "type": "TextBody",
+            "text": "Your donation is being saved. You will receive a message with a payment link shortly."
+          }
+        ]
+      }
+    },
+    {
+      "id": "ERROR",
+      "title": "❌ Error",
+      "terminal": true,
+      "data": {
+        "error_message": {
+          "type": "string",
+          "__example__": "An unknown error occurred."
+        }
+      },
+      "layout": {
+        "type": "SingleColumnLayout",
+        "children": [
+          {
+            "type": "TextHeading",
+            "text": "An Error Occurred"
+          },
+          {
+            "type": "TextBody",
+            "text": "${data.error_message}"
+          }
+        ]
+      }
+    }
+  ]
+}
