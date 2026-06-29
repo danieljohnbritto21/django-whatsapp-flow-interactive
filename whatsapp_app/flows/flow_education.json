@@ -1,0 +1,271 @@
+{
+  "version": "6.0",
+  "data_api_version": "3.0",
+  "routing_model": {
+    "STUDENT_LIST": ["EDU_DONATION_AMOUNT"],
+    "EDU_DONATION_AMOUNT": ["EDU_DONOR_INFO"],
+    "EDU_DONOR_INFO": ["EDU_REVIEW"],
+    "EDU_REVIEW": []
+  },
+  "screens": [
+    {
+      "id": "STUDENT_LIST",
+      "title": "📚 Education Donation",
+      "terminal": false,
+      "data": {
+        "student_options": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "id": { "type": "string" },
+              "title": { "type": "string" }
+            }
+          },
+          "__example__": []
+        },
+        "student_info": {
+          "type": "string",
+          "__example__": "{}"
+        }
+      },
+      "layout": {
+        "type": "SingleColumnLayout",
+        "children": [
+          {
+            "type": "Form",
+            "name": "student_form",
+            "children": [
+              {
+                "type": "TextHeading",
+                "text": "Sponsor a Student"
+              },
+              {
+                "type": "TextBody",
+                "text": "Select a student to support their education"
+              },
+              {
+                "type": "Dropdown",
+                "name": "selected_student",
+                "label": "Select Student *",
+                "data-source": "${data.student_options}",
+                "required": true
+              },
+              {
+                "type": "Footer",
+                "label": "Continue →",
+                "on-click-action": {
+                  "name": "data_exchange",
+                  "payload": {
+                    "selected_student": "${form.selected_student}"
+                  }
+                }
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "EDU_DONATION_AMOUNT",
+      "title": "💰 Donation Amount",
+      "terminal": false,
+      "data": {
+        "student_id": { "type": "string", "__example__": "" },
+        "student_name": { "type": "string", "__example__": "" },
+        "student_info": { "type": "string", "__example__": "" },
+        "amount_options": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "id": { "type": "string" },
+              "title": { "type": "string" }
+            }
+          },
+          "__example__": []
+        }
+      },
+      "layout": {
+        "type": "SingleColumnLayout",
+        "children": [
+          {
+            "type": "Form",
+            "name": "amount_form",
+            "children": [
+              {
+                "type": "TextHeading",
+                "text": "Choose Donation Amount"
+              },
+              {
+                "type": "TextBody",
+                "text": "${data.student_info}"
+              },
+              {
+                "type": "RadioButtonsGroup",
+                "name": "selected_amount",
+                "label": "Select Amount *",
+                "data-source": "${data.amount_options}",
+                "required": true
+              },
+              {
+                "type": "TextInput",
+                "name": "custom_amount",
+                "label": "Custom Amount (₹)",
+                "required": false,
+                "input-type": "number",
+                "helper-text": "Enter amount if you selected 'Custom Amount'"
+              },
+              {
+                "type": "Footer",
+                "label": "Continue →",
+                "on-click-action": {
+                  "name": "data_exchange",
+                  "payload": {
+                    "selected_amount": "${form.selected_amount}",
+                    "custom_amount": "${form.custom_amount}",
+                    "student_id": "${data.student_id}",
+                    "student_name": "${data.student_name}",
+                    "student_info": "${data.student_info}"
+                  }
+                }
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "EDU_DONOR_INFO",
+      "title": "👤 Donor Information",
+      "terminal": false,
+      "data": {
+        "student_id": { "type": "string", "__example__": "" },
+        "student_name": { "type": "string", "__example__": "" },
+        "student_info": { "type": "string", "__example__": "" },
+        "donation_amount": { "type": "string", "__example__": "0" }
+      },
+      "layout": {
+        "type": "SingleColumnLayout",
+        "children": [
+          {
+            "type": "Form",
+            "name": "donor_form",
+            "children": [
+              {
+                "type": "TextHeading",
+                "text": "Your Information"
+              },
+              {
+                "type": "TextBody",
+                "text": "Supporting: ${data.student_name} — ₹${data.donation_amount}"
+              },
+              {
+                "type": "TextInput",
+                "name": "donor_name",
+                "label": "Full Name *",
+                "required": true,
+                "input-type": "text"
+              },
+              {
+                "type": "TextInput",
+                "name": "donor_email",
+                "label": "Email Address *",
+                "required": true,
+                "input-type": "email"
+              },
+              {
+                "type": "TextInput",
+                "name": "donor_whatsapp",
+                "label": "WhatsApp Number *",
+                "required": true,
+                "input-type": "phone"
+              },
+              {
+                "type": "TextInput",
+                "name": "donor_instagram",
+                "label": "Instagram ID (Optional)",
+                "required": false,
+                "input-type": "text"
+              },
+              {
+                "type": "Footer",
+                "label": "Review →",
+                "on-click-action": {
+                  "name": "data_exchange",
+                  "payload": {
+                    "donor_name": "${form.donor_name}",
+                    "donor_email": "${form.donor_email}",
+                    "donor_whatsapp": "${form.donor_whatsapp}",
+                    "donor_instagram": "${form.donor_instagram}",
+                    "student_id": "${data.student_id}",
+                    "student_name": "${data.student_name}",
+                    "donation_amount": "${data.donation_amount}"
+                  }
+                }
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "EDU_REVIEW",
+      "title": "📋 Review & Pay",
+      "terminal": true,
+      "data": {
+        "student_id": { "type": "string", "__example__": "" },
+        "student_name": { "type": "string", "__example__": "" },
+        "donor_name": { "type": "string", "__example__": "" },
+        "donor_email": { "type": "string", "__example__": "" },
+        "donor_whatsapp": { "type": "string", "__example__": "" },
+        "donor_instagram": { "type": "string", "__example__": "" },
+        "grand_total": { "type": "string", "__example__": "0" },
+        "review_text": { "type": "string", "__example__": "" },
+        "flow_type": { "type": "string", "__example__": "EDUCATION" }
+      },
+      "layout": {
+        "type": "SingleColumnLayout",
+        "children": [
+          {
+            "type": "Form",
+            "name": "review_form",
+            "children": [
+              {
+                "type": "TextHeading",
+                "text": "Confirm Your Donation"
+              },
+              {
+                "type": "TextBody",
+                "text": "${data.review_text}"
+              },
+              {
+                "type": "OptIn",
+                "name": "confirm_donation",
+                "label": "I confirm the above details are correct",
+                "required": true
+              },
+              {
+                "type": "Footer",
+                "label": "❤️ Confirm & Pay ₹${data.grand_total}",
+                "on-click-action": {
+                  "name": "complete",
+                  "payload": {
+                    "student_id": "${data.student_id}",
+                    "student_name": "${data.student_name}",
+                    "donor_name": "${data.donor_name}",
+                    "donor_email": "${data.donor_email}",
+                    "donor_whatsapp": "${data.donor_whatsapp}",
+                    "donor_instagram": "${data.donor_instagram}",
+                    "grand_total": "${data.grand_total}",
+                    "flow_type": "${data.flow_type}"
+                  }
+                }
+              }
+            ]
+          }
+        ]
+      }
+    }
+  ]
+}

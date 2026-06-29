@@ -1,0 +1,149 @@
+{% extends "dashboard/base.html" %}
+
+{% block content %}
+<div class="d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-2 mb-3 border-bottom">
+    <h1 class="h2">{{ page_title }}</h1>
+</div>
+
+<h4>Application Stats</h4>
+<div class="row">
+    <div class="col-xl-3 col-md-6 mb-4">
+        <div class="card border-left-primary shadow h-100 py-2">
+            <div class="card-body">
+                <div class="row no-gutters align-items-center">
+                    <div class="col mr-2">
+                        <div class="text-xs font-weight-bold text-primary text-uppercase mb-1">Total WhatsApp Users
+                        </div>
+                        <div class="h5 mb-0 font-weight-bold text-gray-800">{{ total_users }}</div>
+                    </div>
+                    <div class="col-auto"><i class="bi bi-people fs-2 text-gray-300"></i></div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <!-- Add other summary cards similarly -->
+    <div class="col-xl-3 col-md-6 mb-4">
+        <div class="card">
+            <div class="card-body">
+                <div class="text-xs text-uppercase mb-1">Total Messages Sent</div>
+                <div class="h5 mb-0">{{ total_messages_sent }}</div>
+            </div>
+        </div>
+    </div>
+    <div class="col-xl-3 col-md-6 mb-4">
+        <div class="card">
+            <div class="card-body">
+                <div class="text-xs text-uppercase mb-1">Total Students</div>
+                <div class="h5 mb-0">{{ total_students }}</div>
+            </div>
+        </div>
+    </div>
+    <div class="col-xl-3 col-md-6 mb-4">
+        <div class="card">
+            <div class="card-body">
+                <div class="text-xs text-uppercase mb-1">Total Food Items</div>
+                <div class="h5 mb-0">{{ total_food_items }}</div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<h4>Donation & Payment Stats</h4>
+<div class="row">
+    <div class="col-xl-3 col-md-6 mb-4">
+        <div class="card border-left-success shadow h-100 py-2">
+            <div class="card-body">
+                <div class="row no-gutters align-items-center">
+                    <div class="col mr-2">
+                        <div class="text-xs font-weight-bold text-success text-uppercase mb-1">Total Donation Amount
+                        </div>
+                        <div class="h5 mb-0 font-weight-bold text-gray-800">₹{{ total_donation_amount|floatformat:2 }}
+                        </div>
+                    </div>
+                    <div class="col-auto"><i class="bi bi-currency-rupee fs-2 text-gray-300"></i></div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-xl-3 col-md-6 mb-4">
+        <div class="card bg-success text-white">
+            <div class="card-body">
+                <div class="text-xs text-uppercase mb-1">Successful Payments</div>
+                <div class="h5 mb-0">{{ successful_payments }}</div>
+            </div>
+        </div>
+    </div>
+    <div class="col-xl-3 col-md-6 mb-4">
+        <div class="card bg-warning text-dark">
+            <div class="card-body">
+                <div class="text-xs text-uppercase mb-1">Pending Payments</div>
+                <div class="h5 mb-0">{{ pending_payments }}</div>
+            </div>
+        </div>
+    </div>
+    <div class="col-xl-3 col-md-6 mb-4">
+        <div class="card bg-danger text-white">
+            <div class="card-body">
+                <div class="text-xs text-uppercase mb-1">Failed Payments</div>
+                <div class="h5 mb-0">{{ failed_payments }}</div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row mt-4">
+    <div class="col-md-6">
+        <h4><i class="bi bi-chat-dots"></i> Latest Messages</h4>
+        <div class="list-group">
+            {% for msg in latest_messages %}
+            <a href="{% url 'dashboard:user_detail' msg.phone_number %}" class="list-group-item list-group-item-action">
+                <div class="d-flex w-100 justify-content-between">
+                    <h6 class="mb-1">
+                        {% if msg.direction == 'IN' %}
+                        <i class="bi bi-arrow-down-left-circle text-primary"></i> From: {{ msg.phone_number }}
+                        {% else %}
+                        <i class="bi bi-arrow-up-right-circle text-success"></i> To: {{ msg.phone_number }}
+                        {% endif %}
+                    </h6>
+                    <small>{{ msg.timestamp|timesince }} ago</small>
+                </div>
+                <p class="mb-1 text-muted small">{{ msg.content|truncatechars:80 }}</p>
+            </a>
+            {% endfor %}
+        </div>
+    </div>
+    <div class="col-md-6">
+        <h4><i class="bi bi-heart-pulse"></i> Latest Donations</h4>
+        <div class="list-group">
+            {% for donation in latest_donations %}
+            <a href="{% url 'dashboard:user_detail' donation.whatsapp_phone_number %}"
+                class="list-group-item list-group-item-action">
+                <div class="d-flex w-100 justify-content-between">
+                    <h6 class="mb-1">₹{{ donation.amount }} by {{ donation.full_name }}</h6>
+                    <small>{{ donation.created_at|timesince }} ago</small>
+                </div>
+                <p class="mb-1">
+                    <span class="badge 
+                        {% if donation.payment_status == 'COMPLETED' %}bg-success
+                        {% elif donation.payment_status == 'PENDING' or donation.payment_status == 'INITIATED' %}bg-warning text-dark
+                        {% else %}bg-danger{% endif %}">
+                        {{ donation.get_payment_status_display }}
+                    </span>
+                    <span class="text-muted small">{{ donation.get_category_display }}</span>
+                </p>
+            </a>
+            {% endfor %}
+        </div>
+    </div>
+</div>
+
+<div class="mt-4">
+    <h5><i class="bi bi-download"></i> Export Reports</h5>
+    <a href="{% url 'dashboard:export_users_csv' %}" class="btn btn-secondary btn-sm">
+        <i class="bi bi-people"></i> Export Users (CSV)
+    </a>
+    <a href="{% url 'dashboard:export_donations_csv' %}" class="btn btn-secondary btn-sm">
+        <i class="bi bi-journal-text"></i> Export Donations (CSV)
+    </a>
+</div>
+{% endblock %}
