@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from django.conf import settings
+from whatsapp_app.easebuzz_service import easebuzz_service
 from decimal import Decimal
 from typing import Optional
 
@@ -263,8 +265,18 @@ def handle_text_message(phone_number: str, msg_text_raw: str, session) -> None:
 
         # --- Send the "Pay Now" CTA URL button ---
         body_text = f"Your donation of ₹{total_amount:,.0f} is ready. Click below to complete the payment."
+        
+        # Generate dynamic payment URL
+        payment_init_result = easebuzz_service.initiate_payment(donation)
+        if not payment_init_result.get("success"):
+            error_msg = payment_init_result.get("error", "Could not initiate payment.")
+            whatsapp_service.send_text_message(phone_number, f"❌ We're sorry, but there was an issue generating the payment link: {error_msg}")
+            return
+
+        payment_url = payment_init_result.get("payment_url", settings.THAAGAM_FOUNDATION['WEBSITE'])
+
         whatsapp_service.send_interactive_cta_url(
-            phone_number, body_text, "Pay Now", "https://thaagam.org/referral/qpay/HBSGF/", header_text="💳 Complete Your Payment"
+            phone_number, body_text, "Pay Now", payment_url, header_text="💳 Complete Your Payment"
         )
         return
 
@@ -360,11 +372,12 @@ def handle_text_message(phone_number: str, msg_text_raw: str, session) -> None:
 
         # --- Send the "Pay Now" CTA URL button ---
         body_text = f"Your donation of ₹{donation_amount:,.0f} is ready. Click below to complete the payment."
+
         whatsapp_service.send_interactive_cta_url(
             phone_number,
             body_text,
             "Pay Now",
-            "https://thaagam.org/referral/qpay/HBSGF/",
+            settings.THAAGAM_PAY_NOW_URL,
             header_text="💳 Complete Your Payment",
         )
         return
@@ -462,11 +475,12 @@ def handle_text_message(phone_number: str, msg_text_raw: str, session) -> None:
 
         # --- Send the "Pay Now" CTA URL button ---
         body_text = f"Your donation of ₹{donation_amount:,.0f} is ready. Click below to complete the payment."
+
         whatsapp_service.send_interactive_cta_url(
             phone_number,
             body_text,
             "Pay Now",
-            "https://thaagam.org/referral/qpay/HBSGF/",
+            settings.THAAGAM_PAY_NOW_URL,
             header_text="💳 Complete Your Payment",
         )
         return
@@ -637,7 +651,7 @@ def handle_interactive_selection(phone_number: str, selection_id: str, session) 
             # --- Send the "Pay Now" CTA URL button ---
             body_text = f"Your donation of ₹{total_amount:,.0f} is ready. Click below to complete the payment."
             whatsapp_service.send_interactive_cta_url(
-                phone_number, body_text, "Pay Now", "https://thaagam.org/referral/qpay/HBSGF/", header_text="💳 Complete Your Payment"
+                phone_number, body_text, "Pay Now", settings.THAAGAM_PAY_NOW_URL, header_text="💳 Complete Your Payment"
             )
 
         except (ValueError, Package.DoesNotExist):

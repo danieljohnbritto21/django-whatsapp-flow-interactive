@@ -124,16 +124,6 @@ class WhatsAppService:
                     'type': 'image',
                     'image': {'link': self.header_image_url}
                 }
-            else:
-                # CTA URL requires 'link', not 'id' - fall back to text header if no public URL
-                if header_text and str(header_text).strip():
-                    logger.info(f"CTA URL: no public image URL, falling back to text header: {header_text}")
-                    return {
-                        'type': 'text',
-                        'text': self._truncate(header_text, 60)
-                    }
-                logger.warning("CTA URL: no public image URL and no header_text - returning None")
-                return None
 
         # For non-CTA messages (buttons, lists), use media ID if available
         media_id = self._get_header_media_id()
@@ -144,7 +134,8 @@ class WhatsAppService:
                 'image': {'id': media_id}
             }
 
-        # If no image available, return text header if header_text provided
+        # If no image is available (neither link nor ID), fall back to a text header
+        # but only if header_text is explicitly provided.
         if header_text and str(header_text).strip():
             logger.info(f"Falling back to text header: {header_text}")
             return {

@@ -9,6 +9,7 @@ use absolute imports throughout and do not rely on package-relative imports.
 """
 
 import logging
+from django.conf import settings
 
 from whatsapp_app.models import Donation
 from whatsapp_app.whatsapp_service import whatsapp_service
@@ -118,7 +119,7 @@ def redirect_to_thaagam_payment(phone_number, session, donation, selected_packag
     logger = logging.getLogger(__name__)
 
     # Build donation summary
-    thaagam_url = "https://thaagam.org/referral/qpay/HBSGF/"
+    thaagam_url = settings.THAAGAM_PAY_NOW_URL
     final_amount = donation.amount
     # Convert to int for calculation
     food_amount = int(final_amount) - int(package_amount)
@@ -230,7 +231,7 @@ def create_simple_food_donation_with_thaagam(phone_number, session, data):
             )
         
         # Send success message with Thaagam payment URL
-        thaagam_url = "https://thaagam.org/referral/qpay/HBSGF/"
+        thaagam_url = settings.THAAGAM_PAY_NOW_URL
         
         package_summary = ""
         if data.get('selected_packages'):

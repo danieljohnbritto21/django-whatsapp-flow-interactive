@@ -311,7 +311,7 @@ Click the button below to complete your payment."""
             to_phone_number=phone_number,
             body_text=body_text,
             button_text="Pay Now",
-            url="https://thaagam.org/referral/qpay/HBSGF/",
+            url=settings.THAAGAM_PAY_NOW_URL,
             header_text="💳 Complete Your Payment"
         )
         # Reset session after sending payment link
@@ -431,7 +431,7 @@ Click the button below to complete your payment."""
             to_phone_number=phone_number,
             body_text=confirmation_message,
             button_text="💳 Pay Now",
-            url="https://thaagam.org/referral/qpay/HBSGF/",
+            url=settings.THAAGAM_PAY_NOW_URL,
             header_text="✅ Confirm Your Donation"
         )
 
@@ -465,7 +465,7 @@ Click the button below to complete your payment."""
             to_phone_number=phone_number,
             body_text=body_text,
             button_text="Pay Now",
-            url="https://thaagam.org/referral/qpay/HBSGF/",
+            url=settings.THAAGAM_PAY_NOW_URL,
             header_text="💳 Complete Your Payment"
         )
         # Reset session after sending payment link

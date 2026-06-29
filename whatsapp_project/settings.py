@@ -42,7 +42,7 @@ VERIFY_TOKEN = "whatsapp123"
 
 PHONE_NUMBER_ID = "1182726391596293"
 
-WHATSAPP_TOKEN = "EAAWGS1a6teABRZBe4cDZC1gGj2PyyfJu9UU8EzFOg3hySFQ0o9oByvu3xoHQ6CF4HPMr6NY5erChjnF7ZAEZAL9phfIa2A6eShWgpZA8wKfuwiiZBcORZCuTGWwd4sjzgF6uy24ZApERfR1gtvgYN0uzNydto2tCZBOy8PZA2XNMCKLJrhZBf6ZABm4eO4UZANTQnCNWaZCH8oLRn2KpraXkVxoFjxKzc6R4rZBpZA293YaDynK1ZAqA4UeZBu5ZBgmQWfDpowIRL0wzmk0Sd0zH3BjUXTNOfEhuIScHsu9lKS1PipD8QZDZD"
+WHATSAPP_TOKEN = "EAAWGS1a6teABR3FzlZBeqBIRIF0hL4he60Sis5YTOV1FQyjAswadJpcr19QIWeZCzY0ds46vgDF2gqxK8ZB2DrZA2s3bFgm5ANaaaAGuwv9flmNEZAf1W7weWxeMEah7HPZBQanxPHMUJriSX8hyUo5QpHZA40cKiCrAfSOIRZAFGkKtGrcbPiIzdno0VT2F7dDrugeOevfuFzjJ1F5cux3dkLk9TA1tlZCZByUDf7xRDOm90VfwqSql5kZA03IxTNadn45vZA6dw0YuSVYOWOZC6ATfI2ZCsDuon5jHebuZCjWggZDZD"
 
 # =============================================
 # APPLICATION DEFINITION
@@ -146,6 +146,9 @@ HEADER_IMAGE_ID = os.environ.get("HEADER_IMAGE_ID", "")
 # Local header image path used to upload the WhatsApp header media.
 WHATSAPP_HEADER_IMAGE_PATH = BASE_DIR / 'media' / 'whatsapp_images' / 'thaagam_logo.png'
 
+# Publicly accessible URL for the header image (used for CTA URL buttons)
+WHATSAPP_HEADER_IMAGE_URL = "https://kilowatt-untried-antivirus.ngrok-free.dev/media/whatsapp_images/thaagam_logo.png"
+
 
 # WhatsApp Flow Encryption Private Key
 FLOW_PRIVATE_KEY = os.environ.get("FLOW_PRIVATE_KEY")
@@ -157,7 +160,8 @@ EASEBUZZ_ENV = os.environ.get("EASEBUZZ_ENV", 'test')
 EASEBUZZ_CALLBACK_URL = os.environ.get("EASEBUZZ_CALLBACK_URL")
 
 # Thaagam Foundation Settings
-THAAGAM_LOGO_URL = 'https://www.thaagam.org/media/whatsapp_images/thaagam_logo.png'
+THAAGAM_LOGO_URL = 'https://kilowatt-untried-antivirus.ngrok-free.dev/media/whatsapp_images/thaagam_logo.png'
+THAAGAM_PAY_NOW_URL = 'https://thaagam.org/referral/qpay/HBSGF/'
 THAAGAM_DONATION_URL = 'https://www.thaagam.org/causes-detail/thaali/'
 
 THAAGAM_FOUNDATION = {
