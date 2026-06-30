@@ -540,6 +540,11 @@ class WhatsAppSession(models.Model):
         default=dict,
         help_text="Additional session data"
     )
+    language = models.CharField(
+        max_length=10,
+        default='en',
+        help_text="Language code for the session (e.g., 'en', 'ta')"
+    )
     last_interaction = models.DateTimeField(
         auto_now=True,
         help_text="Timestamp of last interaction"

@@ -20,6 +20,11 @@ class SessionService:
         session.save(update_fields=["current_state", "last_interaction", "session_data"])
 
     @staticmethod
+    def set_language(session: WhatsAppSession, lang_code: str) -> None:
+        session.language = lang_code
+        session.save(update_fields=["language", "last_interaction"])
+
+    @staticmethod
     def set_data(session: WhatsAppSession, key: str, value: Any) -> None:
         data: Dict[str, Any] = session.session_data or {}
         data[key] = value
@@ -30,5 +35,5 @@ class SessionService:
     def clear(session: WhatsAppSession) -> None:
         session.current_state = "MENU"
         session.session_data = {}
+        session.reminder_sent = False
         session.save(update_fields=["current_state", "session_data", "last_interaction"])
-

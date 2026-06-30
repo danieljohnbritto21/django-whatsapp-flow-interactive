@@ -6,7 +6,11 @@ from typing import Any, Dict, Tuple
 from django.http import HttpRequest, HttpResponse
 from django.views.decorators.csrf import csrf_exempt
 
-from whatsapp_app.services.chatbot import handle_interactive_selection, handle_text_message
+from whatsapp_app.services.chatbot import (
+    handle_interactive_selection,
+    handle_location_message,
+    handle_text_message,
+)
 from whatsapp_app.services.session_service import SessionService
 
 
@@ -23,6 +27,9 @@ def _parse_message(message: Dict[str, Any]) -> Tuple[str, str]:
             return "interactive", interactive.get("button_reply", {}).get("id", "")
         if interactive.get("type") == "list_reply":
             return "interactive", interactive.get("list_reply", {}).get("id", "")
+
+    if msg_type == "location":
+        return "location", message.get("location", {})
 
     return "unsupported", ""
 
@@ -71,9 +78,11 @@ def webhook_handler(request: HttpRequest) -> HttpResponse:
                 elif msg_kind == "interactive":
                     print(f"[ROUTE] CALLING handle_interactive_selection")
                     handle_interactive_selection(phone_number, content or "", session)
+                elif msg_kind == "location":
+                    print(f"[ROUTE] CALLING handle_location_message")
+                    handle_location_message(phone_number, content or {}, session)
                 else:
                     # ignore
                     pass
 
     return HttpResponse(json.dumps({"status": "success"}), content_type="application/json", status=200)
-

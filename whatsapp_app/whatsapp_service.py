@@ -838,5 +838,95 @@ Click the button below to begin:
             header_text="Add-on Packages"
         )
 
+    def send_contact(self, to_phone_number, contact_data):
+        """Send a native contact card."""
+        logger.info(f"Sending contact card to {to_phone_number}")
+        try:
+            url = f"{self.api_url}/{self.phone_number_id}/messages"
+            headers = {
+                'Authorization': f'Bearer {self.access_token}',
+                'Content-Type': 'application/json'
+            }
+            data = {
+                'messaging_product': 'whatsapp',
+                'to': to_phone_number,
+                'type': 'contacts',
+                'contacts': [contact_data]
+            }
+            logger.debug(f"Request payload: {json.dumps(data, indent=2)}")
+            response = requests.post(url, headers=headers, json=data)
+            response.raise_for_status()
+            result = response.json()
+            logger.info(f"Contact card sent successfully to {to_phone_number}")
+            return result
+        except requests.exceptions.RequestException as e:
+            logger.error(f"Error sending contact card to {to_phone_number}: {str(e)}")
+            if hasattr(e, 'response') and e.response:
+                logger.error(f"Error response: {e.response.text}")
+            raise
+
+    def send_location(self, to_phone_number, latitude, longitude, name, address):
+        """Send a native location message."""
+        logger.info(f"Sending location to {to_phone_number}")
+        try:
+            url = f"{self.api_url}/{self.phone_number_id}/messages"
+            headers = {
+                'Authorization': f'Bearer {self.access_token}',
+                'Content-Type': 'application/json'
+            }
+            data = {
+                'messaging_product': 'whatsapp',
+                'to': to_phone_number,
+                'type': 'location',
+                'location': {
+                    'latitude': latitude,
+                    'longitude': longitude,
+                    'name': name,
+                    'address': address
+                }
+            }
+            logger.debug(f"Request payload: {json.dumps(data, indent=2)}")
+            response = requests.post(url, headers=headers, json=data)
+            response.raise_for_status()
+            result = response.json()
+            logger.info(f"Location sent successfully to {to_phone_number}")
+            return result
+        except requests.exceptions.RequestException as e:
+            logger.error(f"Error sending location to {to_phone_number}: {str(e)}")
+            if hasattr(e, 'response') and e.response:
+                logger.error(f"Error response: {e.response.text}")
+            raise
+
+    def send_location_request(self, to_phone_number, body_text):
+        """Send a native WhatsApp location request message."""
+        logger.info(f"Sending location request to {to_phone_number}")
+        try:
+            url = f"{self.api_url}/{self.phone_number_id}/messages"
+            headers = {
+                "Authorization": f"Bearer {self.access_token}",
+                "Content-Type": "application/json",
+            }
+            data = {
+                "messaging_product": "whatsapp",
+                "to": to_phone_number,
+                "type": "interactive",
+                "interactive": {
+                    "type": "location_request_message",
+                    "body": {"text": body_text},
+                    "action": {"name": "send_location"},
+                },
+            }
+            logger.debug(f"Request payload: {json.dumps(data, indent=2)}")
+            response = requests.post(url, headers=headers, json=data)
+            response.raise_for_status()
+            result = response.json()
+            logger.info(f"Location request sent successfully to {to_phone_number}")
+            return result
+        except requests.exceptions.RequestException as e:
+            logger.error(f"Error sending location request to {to_phone_number}: {str(e)}")
+            if hasattr(e, "response") and e.response:
+                logger.error(f"Error response: {e.response.text}")
+            raise
+
 
 whatsapp_service = WhatsAppService()
