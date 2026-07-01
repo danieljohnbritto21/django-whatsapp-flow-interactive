@@ -1,6 +1,7 @@
 from django.db import models
 from django.utils import timezone
 import uuid
+from datetime import timedelta
 import logging
 
 logger = logging.getLogger(__name__)
@@ -247,7 +248,6 @@ class Donation(models.Model):
     # Payment Method Choices
     PAYMENT_METHOD_CHOICES = [
         ('UPI', 'UPI'),
-        ('EASEBUZZ', 'Easebuzz'),
         ('RAZORPAY', 'Razorpay'),
         ('BANK_TRANSFER', 'Bank Transfer'),
     ]
@@ -344,19 +344,6 @@ class Donation(models.Model):
         help_text="Full payment gateway response"
     )
 
-    # Easebuzz fields
-    easebuzz_txnid = models.CharField(
-        max_length=50,
-        blank=True, null=True,
-        db_index=True,
-        help_text="Easebuzz transaction ID"
-    )
-    easebuzz_access_key = models.CharField(
-        max_length=200,
-        blank=True, null=True,
-        help_text="Easebuzz payment access key"
-    )
-
     # Metadata
     created_at = models.DateTimeField(
         auto_now_add=True,
@@ -375,7 +362,6 @@ class Donation(models.Model):
             models.Index(fields=['payment_status']),
             models.Index(fields=['created_at']),
             models.Index(fields=['category']),
-            models.Index(fields=['easebuzz_txnid']),
         ]
         verbose_name = "Donation"
         verbose_name_plural = "Donations"
@@ -546,13 +532,24 @@ class WhatsAppSession(models.Model):
         help_text="Language code for the session (e.g., 'en', 'ta')"
     )
     last_interaction = models.DateTimeField(
-        auto_now=True,
-        help_text="Timestamp of last interaction"
+        default=timezone.now, help_text="Timestamp of the last user interaction"
     )
     created_at = models.DateTimeField(
         auto_now_add=True,
         help_text="Timestamp when session was created"
     )
+
+    reminder_sent = models.BooleanField(
+        default=False,
+        help_text="Whether an idle reminder has been sent"
+    )
+    is_active = models.BooleanField(
+        default=True,
+        help_text="Whether the session is active"
+    )
+
+    def is_idle(self, minutes: int) -> bool:
+        return timezone.now() > self.last_interaction + timedelta(minutes=minutes)
 
     class Meta:
         ordering = ['-last_interaction']

@@ -70,9 +70,8 @@ class DonationAdmin(admin.ModelAdmin):
         'mobile_number', 
         'email', 
         'whatsapp_phone_number',
-        'easebuzz_txnid'
     ]
-    readonly_fields = ['reference_number', 'created_at', 'updated_at', 'easebuzz_txnid', 'easebuzz_access_key']
+    readonly_fields = ['reference_number', 'created_at', 'updated_at']
     inlines = [DonationItemInline, DonationPackageInline]
     
     fieldsets = (
@@ -86,7 +85,7 @@ class DonationAdmin(admin.ModelAdmin):
             'fields': ('full_name', 'mobile_number', 'email', 'instagram_id', 'message')
         }),
         ('Payment Information', {
-            'fields': ('payment_method', 'payment_status', 'payment_id', 'easebuzz_txnid', 'easebuzz_access_key', 'payment_response')
+            'fields': ('payment_method', 'payment_status', 'payment_id', 'payment_response')
         }),
         ('Timestamps', {
             'fields': ('created_at', 'updated_at'),

@@ -72,6 +72,11 @@ MESSAGES = {
         "package_selection_prompt": "Type selection like `1,3` or `skip`.",
         "footer_text": "❤️ Thaagam Foundation",
         "no_packages_available": "No optional packages available for this donation.",
+        "idle_reminder_header": "⏳ Session Expired",
+        "idle_reminder_body": "It looks like you left before completing your donation.\n\nWould you like to continue where you stopped or restart from the beginning?",
+        "continue_button": "Continue",
+        "continue_flow": "Please continue where you left off.",
+        "restart_button": "Restart"
     },
     "ta": {
         "choose_language": "உங்கள் மொழியைத் தேர்ந்தெடுக்கவும்.",
@@ -144,5 +149,10 @@ MESSAGES = {
         "package_selection_prompt": "`1,3` அல்லது `தவிர்` என தட்டச்சு செய்யவும்.",
         "footer_text": "❤️ தாகம் அறக்கட்டளை",
         "no_packages_available": "இந்த நன்கொடைக்கு விருப்பத் தொகுப்புகள் எதுவும் இல்லை.",
-    },
+        "idle_reminder_header": "⏳ அமர்வு காலாவதியானது",
+        "idle_reminder_body": "நீங்கள் உங்கள் நன்கொடையை முழுமையாக முடிக்காமல் வெளியேறிவிட்டீர்கள்.\n\nநீங்கள் நிறுத்திய இடத்திலிருந்து தொடர விரும்புகிறீர்களா?\nஅல்லது ஆரம்பத்திலிருந்து மீண்டும் தொடங்க விரும்புகிறீர்களா?",
+        "continue_button": "தொடரவும்",
+        "continue_flow": "நீங்கள் விட்ட இடத்திலிருந்து தொடரவும்.",
+        "restart_button": "மறுதொடக்கம்"
+    }
 }

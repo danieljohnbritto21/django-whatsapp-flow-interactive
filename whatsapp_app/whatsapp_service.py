@@ -761,18 +761,21 @@ Your contribution can make a real difference. Please select a cause you wish to 
                 payload['interactive']['header'] = header
 
             logger.debug(f"Request payload: {json.dumps(payload, indent=2)}")
+            
+            # REPLACED CODE STARTS HERE
             response = requests.post(api_url, headers=headers, json=payload)
 
+            print("=" * 80)
+            print("STATUS CODE:", response.status_code)
+            print("RESPONSE:", response.text)
+            print("=" * 80)
+
             if response.status_code >= 400:
-                logger.error(f"Error sending CTA URL - Status: {response.status_code}")
-                logger.error(f"Error Response: {response.text}")
-                print("--- ERROR SENDING CTA URL ---")
-                print("Status:", response.status_code)
-                print("Response:", response.text)
-                print("Payload Sent:", json.dumps(payload, indent=2))
                 return None
 
             result = response.json()
+            # REPLACED CODE ENDS HERE
+            
             logger.info(f"CTA URL sent successfully to {to_phone_number}")
             logger.debug(f"Response: {json.dumps(result, indent=2)}")
             return result

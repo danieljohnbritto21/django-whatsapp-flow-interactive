@@ -26,7 +26,6 @@ from .models import (
     Donation, DonationItem, DonationPackage,
 )
 from .easebuzz_service import easebuzz_service
-from django.conf import settings
 
 logger = logging.getLogger(__name__)
 
@@ -80,7 +79,7 @@ def get_payment_redirect_url(donation, easebuzz_payment_url=None):
     Generate the redirect URL to the Thaagam Foundation website
     with all donation details as query parameters.
     """
-    base_url = getattr(settings, 'THAAGAM_DONATION_URL', 'https://www.thaagam.org/causes-detail/thaali/')
+    base_url = 'https://www.thaagam.org/causes-detail/thaali/'
     
     # Query items
     donation_items = DonationItem.objects.filter(donation=donation)

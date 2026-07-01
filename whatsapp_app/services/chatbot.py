@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from django.conf import settings
+import logging
 from whatsapp_app.messages import MESSAGES
 from decimal import Decimal
 from typing import Optional
@@ -27,6 +28,8 @@ from whatsapp_app.services.session_service import SessionService
 from whatsapp_app.services.utils import extract_digits, normalize_command, safe_decimal
 from whatsapp_app.whatsapp_service import whatsapp_service
 
+logger = logging.getLogger(__name__)
+
 
 def _state_category(state: str) -> Optional[str]:
     # FIX: previously returned "EDUCATION" / "MEDICAL", which do NOT match the
@@ -45,18 +48,28 @@ def _state_category(state: str) -> Optional[str]:
 
 
 def handle_location_message(phone_number: str, location_data: dict, session) -> None:
-    """Handles incoming location messages from the user."""
-    # For now, we just log it. You can save it to the user's profile or donation record.
-    print(f"[LOCATION] Received from {phone_number}: {location_data}")
+    logger.info(f"[WEBHOOK] Incoming Location Message from {phone_number}. Current State: {session.current_state}")
+
+    """Handles incoming location messages from the user and proceeds with donation review."""
+    logger.info(f"[LOCATION] Received from {phone_number}: {location_data}")
 
     # If we are awaiting a location, process it and proceed to the review step.
     if session.current_state == "AWAITING_LOCATION":
         session.session_data["location"] = location_data
-        session.save(update_fields=["session_data"])
+        SessionService.set_data(session, "location", location_data)
+        logger.info(f"[LOCATION] Location saved for {phone_number}. Proceeding to donation review.")
         send_donation_review(phone_number, session)
     else:
         # If a location is sent unexpectedly, you might want to ignore it or handle it.
-        print(f"[LOCATION] Received location from {phone_number} in an unexpected state: {session.current_state}")
+        logger.warning(f"[LOCATION] Received location from {phone_number} in an unexpected state: {session.current_state}. Ignoring.")
+        # Optionally, re-prompt the user for their current state if it's not a final state
+        if session.current_state not in ["MENU", "LANGUAGE_SELECT", "NONE"]:
+            SessionService.resume_session(session)
+        else:
+            # If in a final state or unknown, just send a generic message or main menu
+            lang = getattr(session, 'language', 'en')
+            whatsapp_service.send_text_message(phone_number, _get_message("unrecognized_command", lang))
+            SessionService.clear(session)
 
 
 def _get_message(key: str, lang: str, **kwargs) -> str:
@@ -68,20 +81,14 @@ def _get_message(key: str, lang: str, **kwargs) -> str:
 
 
 def handle_text_message(phone_number: str, msg_text_raw: str, session) -> None:
-    # Debug: print state before any processing
-    print("=" * 60)
-    print("[TEXT] ENTERED handle_text_message")
-    print(f"[TEXT] PHONE: {phone_number}")
-    print(f"[TEXT] STATE: {session.current_state}")
-    print(f"[TEXT] INPUT: {repr(msg_text_raw)}")
+    logger.info(f"[WEBHOOK] Incoming Text Message from {phone_number}: '{msg_text_raw}'. Current State: {session.current_state}")
 
     cmd = normalize_command(msg_text_raw)
-    print(f"[TEXT] CMD: {repr(cmd)}")
+    logger.debug(f"[TEXT] Normalized command: {repr(cmd)}")
 
     # If the session is cleared or new, ask for language.
     # Any text input will trigger this.
     if session.current_state == "MENU":
-        SessionService.clear(session)
         SessionService.update_state(session, "LANGUAGE_SELECT")
         whatsapp_service.send_interactive_buttons(
             phone_number,
@@ -91,6 +98,7 @@ def handle_text_message(phone_number: str, msg_text_raw: str, session) -> None:
                 {"type": "reply", "reply": {"id": "lang_ta", "title": "தமிழ் (Tamil)"}},
             ],
         )
+        logger.info(f"[TEXT] Session for {phone_number} was MENU, prompted for language.")
         return
 
     # If in language select, re-prompt the user.
@@ -106,13 +114,24 @@ def handle_text_message(phone_number: str, msg_text_raw: str, session) -> None:
                 {"type": "reply", "reply": {"id": "lang_ta", "title": "தமிழ் (Tamil)"}},
             ],
         )
+        logger.info(f"[TEXT] Session for {phone_number} was LANGUAGE_SELECT, re-prompted for language.")
         return
 
     lang = getattr(session, 'language', 'en')
-    if cmd == _get_message("cancel_button", lang).lower() or cmd == "cancel":
+    # Universal restart keywords
+    # Using normalize_command which already does .lower()
+    restart_keywords = {
+        "restart", "start over", "begin again", "restart flow", "start", "hello", "hey",
+        "மீண்டும் தொடங்கு", "மறுபடியும் தொடங்கு",
+        "gemini code assist" # As requested
+    }
+    if cmd in restart_keywords:
+        logger.info(f"[RESTART] Phone: {phone_number} triggered restart with keyword '{cmd}'. Old state: {session.current_state}")
         SessionService.clear(session)
         # Restart the flow by asking for language again
-        handle_text_message(phone_number, "restart", session)
+        SessionService.update_state(session, "LANGUAGE_SELECT")
+        handle_text_message(phone_number, "start", session) # Use a neutral word to re-trigger language prompt
+        logger.info(f"[RESTART] Session for {phone_number} reset. New state: {session.current_state}")
         return
 
     if cmd == _get_message("pay_now_button", lang).lower() or cmd == "pay_now":
@@ -126,23 +145,24 @@ def handle_text_message(phone_number: str, msg_text_raw: str, session) -> None:
             whatsapp_service.send_text_message(phone_number, _get_message("unrecognized_command", lang))
             SessionService.clear(session)
             return
-        send_pay_now_cta(phone_number, donation.reference_number, donation.amount, lang)
-        SessionService.clear(session)
+        send_pay_now_cta(phone_number, donation.reference_number, donation.amount, lang) # This sends the CTA
+        SessionService.clear(session) # Then clears the session
+        return
+
+    # Universal continue keywords
+    continue_keywords = {"continue", "resume", "தொடரவும்", "தொடர்"}
+    if cmd in continue_keywords:
+        logger.info(f"[CONTINUE] User {phone_number} chose to continue donation with text '{cmd}'.")
+        SessionService.resume_session(session)
         return
 
     # Get the current state and data from the session for state-specific logic
     state = session.current_state
-    data = session.session_data or {}
+    data = session.session_data # Use session.session_data directly
 
     # ===================== FOOD =====================
     if state == "FOOD_FORM_QUANTITY":
-        print(f"[STATE] MATCH! FOOD_FORM_QUANTITY")
-        print(f"[STATE] MATCH! state == FOOD_FORM_QUANTITY")
-        print("=" * 50)
-        print("[QTY] ENTERED FOOD_FORM_QUANTITY HANDLER!")
-        print(f"[QTY] state: {state}")
-        print(f"[QTY] input: {repr(msg_text_raw)}")
-        print(f"[QTY] stripped: {repr((msg_text_raw or '').strip())}")
+        logger.info(f"[FOOD_FORM_QUANTITY] Phone: {phone_number}, Input: '{msg_text_raw}'")
 
         qty_str = (msg_text_raw or "").strip()
         errors = []
@@ -181,9 +201,9 @@ def handle_text_message(phone_number: str, msg_text_raw: str, session) -> None:
         data["base_total"] = str(base_total)
         data["amount_total"] = str(base_total)
         session.session_data = data
-        session.save(update_fields=["session_data"])
+        session.save(update_fields=["session_data"]) # Save session_data
 
-        # All donor details collected, now ask for packages
+        # Quantity is valid, proceed to ask for full name
         # This block transitions any lingering sessions to the new flow.
         # Start the sequential donor detail collection
         SessionService.update_state(session, "FOOD_FORM_FULL_NAME")
@@ -192,36 +212,39 @@ def handle_text_message(phone_number: str, msg_text_raw: str, session) -> None:
 
     if state == "FOOD_FORM_FULL_NAME":
         from whatsapp_app.services.validation_service import validate_name
+        logger.info(f"[FOOD_FORM_FULL_NAME] Phone: {phone_number}, Input: '{msg_text_raw}'")
         errors = validate_name(msg_text_raw)
         if errors: # pragma: no cover
             send_validation_errors(phone_number, errors, lang)
             return
         data["full_name"] = msg_text_raw.strip()
-        session.session_data = data
+        SessionService.set_data(session, "full_name", msg_text_raw.strip())
         SessionService.update_state(session, "FOOD_FORM_EMAIL")
         whatsapp_service.send_text_message(phone_number, _get_message("ask_email", lang))
         return
 
     if state == "FOOD_FORM_EMAIL":
         from whatsapp_app.services.validation_service import validate_email
+        logger.info(f"[FOOD_FORM_EMAIL] Phone: {phone_number}, Input: '{msg_text_raw}'")
         errors = validate_email(msg_text_raw)
         if errors:
             send_validation_errors(phone_number, errors, lang)
             return
         data["email"] = msg_text_raw.strip().lower()
-        session.session_data = data
+        SessionService.set_data(session, "email", msg_text_raw.strip().lower())
         SessionService.update_state(session, "FOOD_FORM_MOBILE")
         whatsapp_service.send_text_message(phone_number, _get_message("ask_mobile", lang))
         return
 
     if state == "FOOD_FORM_MOBILE":
         from whatsapp_app.services.validation_service import validate_mobile
+        logger.info(f"[MED_FORM_MOBILE] Phone: {phone_number}, Input: '{msg_text_raw}'")
         errors = validate_mobile(msg_text_raw, lang)
         if errors:
             send_validation_errors(phone_number, errors, lang)
             return
         data["mobile_number"] = extract_digits(msg_text_raw)
-        session.session_data = data
+        SessionService.set_data(session, "mobile_number", extract_digits(msg_text_raw))
         SessionService.update_state(session, "FOOD_FORM_INSTAGRAM")
         whatsapp_service.send_interactive_buttons(
             phone_number,
@@ -235,10 +258,11 @@ def handle_text_message(phone_number: str, msg_text_raw: str, session) -> None:
         return
 
     if state == "FOOD_FORM_INSTAGRAM":
+        logger.info(f"[FOOD_FORM_INSTAGRAM] Phone: {phone_number}, Input: '{msg_text_raw}'")
         # This state is now for processing the text input *after* user chose "Enter"
         data["instagram_id"] = msg_text_raw.strip()
-        session.session_data = data
-        SessionService.update_state(session, "AWAITING_LOCATION")
+        SessionService.set_data(session, "instagram_id", msg_text_raw.strip())
+        SessionService.update_state(session, "AWAITING_LOCATION") # Move to AWAITING_LOCATION
         send_location_request(phone_number, lang)
         return
 
@@ -314,29 +338,12 @@ def handle_text_message(phone_number: str, msg_text_raw: str, session) -> None:
 
         whatsapp_service.send_text_message(phone_number, review)
 
-        # --- Send the "Pay Now" CTA URL button ---
-        body_text = f"Your donation of ₹{total_amount:,.0f} is ready. Click below to complete the payment."
-
-        # Generate dynamic payment URL
-        payment_init_result = easebuzz_service.initiate_payment(donation)
-        if not payment_init_result.get("success"):
-            error_msg = payment_init_result.get("error", "Could not initiate payment.")
-            whatsapp_service.send_text_message(phone_number, f"❌ We're sorry, but there was an issue generating the payment link: {error_msg}")
-            return
-
-        payment_url = payment_init_result.get("payment_url", settings.THAAGAM_FOUNDATION['WEBSITE'])
-
-        whatsapp_service.send_interactive_cta_url(
-            phone_number,
-            _get_message("payment_cta_body", lang, amount=total_amount),
-            _get_message("pay_now_button", lang),
-            payment_url,
-            header_text=_get_message("payment_cta_header", lang),
-        )
+        send_pay_now_cta(phone_number, donation.reference_number, total_amount, lang)
         whatsapp_service.send_text_message(phone_number, _get_message("conversation_ended", lang))
-        SessionService.clear(session)
+        SessionService.clear(session) # Clear session after sending payment link
+        return # Important to return here
 
-    print(f"[STATE] CHECK: {repr(state)} == EDU_STUDENT_SELECTED_AMOUNT")
+    logger.debug(f"[TEXT] Current state for {phone_number}: {state}")
 
     # ===================== EDUCATION =====================
     if state == "EDU_STUDENT_SELECTED_AMOUNT":
@@ -353,6 +360,7 @@ def handle_text_message(phone_number: str, msg_text_raw: str, session) -> None:
             whatsapp_service.send_text_message(phone_number, _get_message("ask_full_name", lang))
         except (ValueError, TypeError):
             whatsapp_service.send_text_message(phone_number, _get_message("invalid_amount_format", lang))
+        logger.info(f"[EDU_STUDENT_SELECTED_AMOUNT] Phone: {phone_number}, Input: '{msg_text_raw}'. Amount: {amt}")
         return
 
     if state == "EDU_FORM_FULL_NAME":
@@ -362,31 +370,33 @@ def handle_text_message(phone_number: str, msg_text_raw: str, session) -> None:
             send_validation_errors(phone_number, errors, lang)
             return
         data["full_name"] = msg_text_raw.strip()
-        session.session_data = data
+        SessionService.set_data(session, "full_name", msg_text_raw.strip())
         SessionService.update_state(session, "EDU_FORM_EMAIL")
         whatsapp_service.send_text_message(phone_number, _get_message("ask_email", lang))
         return
 
     if state == "EDU_FORM_EMAIL":
         from whatsapp_app.services.validation_service import validate_email
+        logger.info(f"[EDU_FORM_EMAIL] Phone: {phone_number}, Input: '{msg_text_raw}'")
         all_errors = validate_email(msg_text_raw)
         if all_errors:
             send_validation_errors(phone_number, all_errors, lang)
             return
         data["email"] = msg_text_raw.strip().lower()
-        session.session_data = data
+        SessionService.set_data(session, "email", msg_text_raw.strip().lower())
         SessionService.update_state(session, "EDU_FORM_MOBILE")
         whatsapp_service.send_text_message(phone_number, _get_message("ask_mobile", lang))
         return
 
     if state == "EDU_FORM_MOBILE":
         from whatsapp_app.services.validation_service import validate_mobile
+        logger.info(f"[FOOD_FORM_MOBILE] Phone: {phone_number}, Input: '{msg_text_raw}'")
         all_errors = validate_mobile(msg_text_raw, lang)
         if all_errors:
             send_validation_errors(phone_number, all_errors, lang)
             return
         data["mobile_number"] = extract_digits(msg_text_raw)
-        session.session_data = data
+        SessionService.set_data(session, "mobile_number", extract_digits(msg_text_raw))
         SessionService.update_state(session, "EDU_FORM_INSTAGRAM")
         whatsapp_service.send_interactive_buttons(
             phone_number,
@@ -400,23 +410,22 @@ def handle_text_message(phone_number: str, msg_text_raw: str, session) -> None:
         return
 
     if state == "EDU_FORM_INSTAGRAM":
+        logger.info(f"[EDU_FORM_INSTAGRAM] Phone: {phone_number}, Input: '{msg_text_raw}'")
         # FIX: This block previously kept executing AFTER requesting the
         # location — it immediately created the donation, sent the review +
         # Pay Now CTA, and cleared the session right here, before the user
         # ever shared their location. By the time the location actually
         # arrived, the session had already been wiped, so
         # handle_location_message() saw an "unexpected state" and silently
-        # did nothing (the "sorry" fallback). This now mirrors the working
+        # did nothing. This now mirrors the working
         # FOOD_FORM_INSTAGRAM block exactly: save the Instagram ID, request
         # the location, and STOP. The donation + review + Pay Now are sent
         # later by send_donation_review(), once the location actually comes in.
         data["instagram_id"] = msg_text_raw.strip()
         session.session_data = data
-        SessionService.update_state(session, "AWAITING_LOCATION")
+        SessionService.update_state(session, "AWAITING_LOCATION") # Move to AWAITING_LOCATION
         send_location_request(phone_number, lang)
         return
-
-    print(f"[STATE] CHECK: {repr(state)} == MED_PATIENT_SELECTED_AMOUNT")
 
     # ===================== MEDICAL =====================
     if state == "MED_PATIENT_SELECTED_AMOUNT":
@@ -433,6 +442,7 @@ def handle_text_message(phone_number: str, msg_text_raw: str, session) -> None:
             whatsapp_service.send_text_message(phone_number, _get_message("ask_full_name", lang))
         except (ValueError, TypeError):
             whatsapp_service.send_text_message(phone_number, _get_message("invalid_amount_format", lang))
+        logger.info(f"[MED_PATIENT_SELECTED_AMOUNT] Phone: {phone_number}, Input: '{msg_text_raw}'. Amount: {amt}")
         return
 
     if state == "MED_FORM_FULL_NAME":
@@ -442,31 +452,33 @@ def handle_text_message(phone_number: str, msg_text_raw: str, session) -> None:
             send_validation_errors(phone_number, errors, lang)
             return
         data["full_name"] = msg_text_raw.strip()
-        session.session_data = data
+        SessionService.set_data(session, "full_name", msg_text_raw.strip())
         SessionService.update_state(session, "MED_FORM_EMAIL")
         whatsapp_service.send_text_message(phone_number, _get_message("ask_email", lang))
         return
 
     if state == "MED_FORM_EMAIL":
         from whatsapp_app.services.validation_service import validate_email
+        logger.info(f"[MED_FORM_EMAIL] Phone: {phone_number}, Input: '{msg_text_raw}'")
         all_errors = validate_email(msg_text_raw)
         if all_errors:
             send_validation_errors(phone_number, all_errors, lang)
             return
         data["email"] = msg_text_raw.strip().lower()
-        session.session_data = data
+        SessionService.set_data(session, "email", msg_text_raw.strip().lower())
         SessionService.update_state(session, "MED_FORM_MOBILE")
         whatsapp_service.send_text_message(phone_number, _get_message("ask_mobile", lang))
         return
 
     if state == "MED_FORM_MOBILE":
         from whatsapp_app.services.validation_service import validate_mobile
+        logger.info(f"[EDU_FORM_MOBILE] Phone: {phone_number}, Input: '{msg_text_raw}'")
         all_errors = validate_mobile(msg_text_raw, lang)
         if all_errors:
             send_validation_errors(phone_number, all_errors, lang)
             return
         data["mobile_number"] = extract_digits(msg_text_raw)
-        session.session_data = data
+        SessionService.set_data(session, "mobile_number", extract_digits(msg_text_raw))
         SessionService.update_state(session, "MED_FORM_INSTAGRAM")
         whatsapp_service.send_interactive_buttons(
             phone_number,
@@ -480,27 +492,28 @@ def handle_text_message(phone_number: str, msg_text_raw: str, session) -> None:
         return
 
     if state == "MED_FORM_INSTAGRAM":
+        logger.info(f"[MED_FORM_INSTAGRAM] Phone: {phone_number}, Input: '{msg_text_raw}'")
         # FIX: same issue and same fix as EDU_FORM_INSTAGRAM above — stop
         # right after requesting the location instead of immediately
         # creating the donation and clearing the session. send_donation_review()
         # takes over once the location is actually received.
         data["instagram_id"] = msg_text_raw.strip()
-        session.session_data = data
-        SessionService.update_state(session, "AWAITING_LOCATION")
+        SessionService.set_data(session, "instagram_id", msg_text_raw.strip())
+        SessionService.update_state(session, "AWAITING_LOCATION") # Move to AWAITING_LOCATION
         send_location_request(phone_number, lang)
         return
 
-    # Default handler for unrecognized text messages
-    # If the input doesn't match any state, reset the conversation.
-    # This prevents the user from getting stuck.
-    SessionService.clear(session)
-    handle_text_message(phone_number, "restart", session)
+    # Default handler for unrecognized text messages.
+    # If the input doesn't match any state, re-prompt the user for the current
+    # step instead of resetting the entire conversation. This prevents the user
+    # from getting stuck and preserves their progress.
+    SessionService.resume_session(session)
+    logger.info(f"[TEXT] Unhandled text '{msg_text_raw}' in state {state}. Re-prompting user.")
 
 
-def handle_interactive_selection(phone_number: str, selection_id: str, session) -> None:
-    from whatsapp_app.services.validation_service import (
-        send_validation_errors,
-    )
+def handle_interactive_selection(phone_number: str, selection_id: str, session) -> None: # pragma: no cover
+    logger.info(f"[WEBHOOK] Incoming Interactive Reply from {phone_number}: ID='{selection_id}'. Current State: {session.current_state}")
+    from whatsapp_app.services.validation_service import send_validation_errors # Moved import here
 
     print("=" * 60)
     print("[INTERACTIVE] ENTERED handle_interactive_selection")
@@ -515,24 +528,44 @@ def handle_interactive_selection(phone_number: str, selection_id: str, session) 
         lang_code = sid.split("_")[1]
         SessionService.set_language(session, lang_code)
         SessionService.update_state(session, "MAIN_MENU")
+        logger.info(f"[INTERACTIVE] Phone: {phone_number} selected language {lang_code}. Moving to MAIN_MENU.")
         send_menu(phone_number, lang_code)
         return
 
-    if sid == "contact" or sid == _get_message("contact_button", lang).lower():
+    # Handle continue/restart from idle reminder
+    if sid == "continue_session":
+        logger.info(f"[REMINDER] Continue selected by {phone_number} from state {session.current_state}.")
+        SessionService.resume_session(session)
+        return
+
+    if sid == "restart_session":
+        logger.info(f"[REMINDER] Restart selected by {phone_number} from state {session.current_state}.")
+        SessionService.clear(session)
+        SessionService.update_state(session, "LANGUAGE_SELECT")
+        handle_text_message(phone_number, "start", session) # Re-trigger language prompt
+        logger.info(f"[RESTART] Session for {phone_number} reset. New state: {session.current_state}")
+        return
+
+    # Normalize button IDs for comparison
+    normalized_contact_button = normalize_command(_get_message("contact_button", lang))
+    if sid == "contact" or sid == normalized_contact_button:
+        logger.info(f"[INTERACTIVE] Phone: {phone_number} selected Contact. State: {session.current_state}.")
         send_contact(phone_number, lang)
         return
 
     if sid == "location" or sid == _get_message("location_button", lang).lower():
+        logger.info(f"[INTERACTIVE] Phone: {phone_number} selected Location. State: {session.current_state}.")
         send_location(phone_number, lang)
         return
 
     if sid in {"menu", "main_menu"}:
+        logger.info(f"[INTERACTIVE] Phone: {phone_number} selected Main Menu. State: {session.current_state}.")
         SessionService.clear(session)
-        # Restart flow by asking for language
+        # Restart flow by asking for language, which is the default for a cleared session
         handle_text_message(phone_number, "restart", session)
         return
 
-    if sid == "pay_now" or sid == _get_message("pay_now_button", lang).lower():
+    if sid == "pay_now" or sid == _get_message("pay_now_button", lang).lower(): # This is for the "Pay Now" button on the review screen
         donation_id = (session.session_data or {}).get("donation_id")
         if not donation_id:
             whatsapp_service.send_text_message(phone_number, _get_message("unrecognized_command", lang))
@@ -543,26 +576,31 @@ def handle_interactive_selection(phone_number: str, selection_id: str, session) 
             whatsapp_service.send_text_message(phone_number, _get_message("unrecognized_command", lang))
             SessionService.clear(session)
             return
-        send_pay_now_cta(phone_number, donation.reference_number, donation.amount, lang)
-        SessionService.clear(session)
+        send_pay_now_cta(phone_number, donation.reference_number, donation.amount, lang) # This sends the CTA
+        whatsapp_service.send_text_message(phone_number, _get_message("conversation_ended", lang)) # End message
+        SessionService.clear(session) # Then clears the session
         return
 
-    if sid == "cancel" or sid == _get_message("cancel_button", lang).lower():
+    normalized_cancel_button = normalize_command(_get_message("cancel_button", lang))
+    if sid == "cancel" or sid == normalized_cancel_button or sid == "restart":
+        logger.info(f"[INTERACTIVE] Phone: {phone_number} selected Cancel/Restart. State: {session.current_state}.")
         SessionService.clear(session)
         # Restart flow by asking for language
+        SessionService.update_state(session, "LANGUAGE_SELECT")
         handle_text_message(phone_number, "restart", session)
         return
 
     if sid == "donate" or sid == _get_message("donate_button", lang).lower():
         SessionService.update_state(session, "CATEGORY_SELECT")
+        logger.info(f"[INTERACTIVE] Phone: {phone_number} selected Donate. Moving to CATEGORY_SELECT.")
         send_donate_category_menu(phone_number, lang)
         return
 
     if sid == "donate_food":
         SessionService.update_state(session, "FOOD_ITEM_SELECT")
         SessionService.set_data(session, "flow_category", "FOOD")
-        session.session_data = session.session_data or {}
-        session.save(update_fields=["session_data", "current_state"])
+        # No need to save here, set_data and update_state already save.
+        logger.info(f"[INTERACTIVE] Phone: {phone_number} selected Food. Moving to FOOD_ITEM_SELECT.")
         send_food_items_list(phone_number, lang)
         return
 
@@ -573,9 +611,8 @@ def handle_interactive_selection(phone_number: str, selection_id: str, session) 
             send_food_items_list(phone_number, lang)
             return
         data = session.session_data or {}
-        data["selected_food_item"] = {"id": item.id, "name": item.name, "price": str(item.price_per_unit), "unit": item.unit_label}
-        session.session_data = data
-        SessionService.update_state(session, "FOOD_FORM_QUANTITY")
+        SessionService.set_data(session, "selected_food_item", {"id": item.id, "name": item.name, "price": str(item.price_per_unit), "unit": item.unit_label})
+        SessionService.update_state(session, "FOOD_FORM_QUANTITY") # Update state
         print(f"[SELECT] Set FOOD_FORM_QUANTITY, selected_food_item: {data.get('selected_food_item')}")
         whatsapp_service.send_text_message(
             phone_number,
@@ -585,11 +622,9 @@ def handle_interactive_selection(phone_number: str, selection_id: str, session) 
 
     if sid == "donate_education":
         SessionService.update_state(session, "EDU_STUDENT_SELECT")
-        # FIX: was "EDUCATION" — must be "EDU" to match what
-        # send_donation_review() checks for (flow_prefix == "EDUCATION").
-        # The old mismatched value meant a successfully-shared location
-        # would still fail to produce a donation/review/Pay Now message.
+        # Set flow_category to EDUCATION for send_donation_review
         SessionService.set_data(session, "flow_category", "EDUCATION")
+        logger.info(f"[INTERACTIVE] Phone: {phone_number} selected Education. Moving to EDU_STUDENT_SELECT.")
         send_student_list(phone_number, lang)
         return
 
@@ -600,18 +635,16 @@ def handle_interactive_selection(phone_number: str, selection_id: str, session) 
             send_student_list(phone_number, lang)
             return
         data = session.session_data or {}
-        data["selected_student"] = {"id": student.id, "name": student.name}
-        session.session_data = data
-        SessionService.update_state(session, "EDU_STUDENT_SELECTED_AMOUNT")
+        SessionService.set_data(session, "selected_student", {"id": student.id, "name": student.name})
+        SessionService.update_state(session, "EDU_STUDENT_SELECTED_AMOUNT") # Update state
         print(f"[SELECT] Set EDU_STUDENT_SELECTED_AMOUNT, selected_student: {data.get('selected_student')}")
         whatsapp_service.send_text_message(phone_number, f"🎓 {student.name}\n\n{_get_message('ask_donation_amount', lang, amount=100)}")
         return
 
     if sid == "donate_medical":
         SessionService.update_state(session, "MED_PATIENT_SELECT")
-        # FIX: was "MEDICAL" — must be "MED" to match what
-        # send_donation_review() checks for (flow_prefix == "MEDICAL").
-        SessionService.set_data(session, "flow_category", "MEDICAL")
+        SessionService.set_data(session, "flow_category", "MEDICAL") # Set for send_donation_review
+        logger.info(f"[INTERACTIVE] Phone: {phone_number} selected Medical. Moving to MED_PATIENT_SELECT.")
         send_patient_list(phone_number, lang)
         return
 
@@ -622,14 +655,13 @@ def handle_interactive_selection(phone_number: str, selection_id: str, session) 
             send_patient_list(phone_number, lang)
             return
         data = session.session_data or {}
-        data["selected_patient"] = {"id": patient.id, "name": patient.name}
-        session.session_data = data
-        SessionService.update_state(session, "MED_PATIENT_SELECTED_AMOUNT")
+        SessionService.set_data(session, "selected_patient", {"id": patient.id, "name": patient.name, "hospital": patient.hospital, "goal_amount": str(patient.goal_amount), "raised_amount": str(patient.raised_amount)})
+        SessionService.update_state(session, "MED_PATIENT_SELECTED_AMOUNT") # Update state
         print(f"[SELECT] Set MED_PATIENT_SELECTED_AMOUNT, selected_patient: {data.get('selected_patient')}")
         remaining = max(patient.goal_amount - patient.raised_amount, 0)
         whatsapp_service.send_text_message(
             phone_number,
-            f"🏥 {patient.name}\n{_get_message('hospital_label', lang)}: {patient.hospital}\n{_get_message('remaining_needed_label', lang)}: ₹{remaining:,.0f}\n\n{_get_message('ask_donation_amount', lang, amount=100)}",
+            f"🏥 {patient.name}\n{_get_message('hospital_label', lang)}: {patient.hospital}\n{_get_message('remaining_needed_label', lang)}: ₹{remaining:,.0f}\n\n{_get_message('ask_donation_amount', lang, amount=100)}"
         )
         return
 
@@ -643,18 +675,20 @@ def handle_interactive_selection(phone_number: str, selection_id: str, session) 
         if current_flow_prefix:
             SessionService.update_state(session, f"{current_flow_prefix}_FORM_INSTAGRAM")
             whatsapp_service.send_text_message(phone_number, _get_message("ask_instagram", lang))
+            logger.info(f"[INTERACTIVE] Phone: {phone_number} chose to enter Instagram ID. State: {session.current_state}.")
         return
 
     if sid == "instagram_skip":
         # User wants to skip. Set ID to empty and move to the next step.
-        session.session_data["instagram_id"] = ""
+        SessionService.set_data(session, "instagram_id", "")
         _move_to_next_step_after_instagram(phone_number, session)
         return
-
-    if sid.startswith("pkg_"):
-        print("Reached package handler")
+    
+    # This block handles interactive list selections for packages.
+    if sid.startswith("pkg_") and session.current_state == "FOOD_PACKAGES_SELECT":
+        logger.info(f"[FOOD_PACKAGES_SELECT] Phone: {phone_number} selected package: {sid}.")
         state = session.current_state
-        if state != "FOOD_PACKAGES_SELECT":
+        if state != "FOOD_PACKAGES_SELECT": # Double check, though outer if should prevent this
             # If we are not in the package selection state, ignore this.
             return
 
@@ -663,7 +697,7 @@ def handle_interactive_selection(phone_number: str, selection_id: str, session) 
         try:
             pkg_id = int(sid.replace("pkg_", ""))
             package = Package.objects.get(id=pkg_id, is_active=True)
-            print("Package loaded")
+            logger.debug(f"[FOOD_PACKAGES_SELECT] Package loaded: {package.name}")
 
             # --- Create Donation and Send Summary ---
             donor = {
@@ -685,10 +719,9 @@ def handle_interactive_selection(phone_number: str, selection_id: str, session) 
                 package_total=package_total, base_total=base_total,
             )
 
-            data["donation_id"] = donation.id
-            session.session_data = data
+            SessionService.set_data(session, "donation_id", donation.id)
             SessionService.update_state(session, "FOOD_REVIEW")
-            print("Session and state updated for review.")
+            logger.info(f"[FOOD_PACKAGES_SELECT] Session and state updated for review for {phone_number}.")
 
             # --- Build and send the Donation Summary ---
             review = (
@@ -711,6 +744,8 @@ def handle_interactive_selection(phone_number: str, selection_id: str, session) 
 
         except (ValueError, Package.DoesNotExist):
             whatsapp_service.send_text_message(phone_number, _get_message("invalid_selection", lang))
+        # Fallback for any other unhandled interactive reply
+        SessionService.resume_session(session)
         return
 
 
@@ -721,7 +756,8 @@ def send_donation_review(phone_number: str, session) -> None:
     """
     lang = session.language
     data = session.session_data or {}
-    flow_prefix = data.get("flow_category")
+    logger.info(f"[DONATION_REVIEW] Generating review for {phone_number} in state {session.current_state}.")
+    flow_category = data.get("flow_category")
 
     # --- Create the Donation Record ---
     # This part is now centralized here.
@@ -736,7 +772,7 @@ def send_donation_review(phone_number: str, session) -> None:
     donation = None
     review_lines = [f"{_get_message('donation_review_header', lang)}\n"]
 
-    if flow_prefix == "FOOD":
+    if flow_category == "FOOD":
         food_item = data.get("selected_food_item", {})
         qty = int(data.get("quantity", 1))
         base_total = safe_decimal(data.get("base_total", "0"))
@@ -750,28 +786,33 @@ def send_donation_review(phone_number: str, session) -> None:
             selected_package_ids=selected_pkg_ids,
             package_total=package_total,
             base_total=base_total,
+            # location=data.get("location") # Add location if needed in DonationService
         )
         review_lines.append(f"{_get_message('item_label', lang)}: {food_item.get('name', '')}")
         review_lines.append(f"{_get_message('quantity_label', lang)}: {qty}")
         review_lines.append(f"{_get_message('grand_total_label', lang)}: ₹{donation.amount:,.0f}")
 
-    elif flow_prefix == "EDUCATION":
+    elif flow_category == "EDUCATION":
         student = data.get("selected_student", {})
         amount = safe_decimal(data.get("donation_amount", "0"))
+        logger.debug(f"[DONATION_REVIEW] Creating education donation for student: {student.get('name')}, amount: {amount}")
         donation = DonationService.create_education_donation(**donor_details, selected_student=student, amount=amount)
         review_lines.append(f"{_get_message('student_label', lang)}: {student.get('name', '')}")
         review_lines.append(f"{_get_message('amount_label', lang)}: ₹{donation.amount:,.0f}")
 
-    elif flow_prefix == "MEDICAL":
+    elif flow_category == "MEDICAL":
         patient = data.get("selected_patient", {})
         amount = safe_decimal(data.get("donation_amount", "0"))
+        logger.debug(f"[DONATION_REVIEW] Creating medical donation for patient: {patient.get('name')}, amount: {amount}")
         donation = DonationService.create_medical_donation(**donor_details, selected_patient=patient, amount=amount)
         review_lines.append(f"{_get_message('patient_label', lang)}: {patient.get('name', '')}")
         review_lines.append(f"{_get_message('amount_label', lang)}: ₹{donation.amount:,.0f}")
 
     if not donation:
         whatsapp_service.send_text_message(phone_number, _get_message("unrecognized_command", lang))
+        logger.error(f"[DONATION_REVIEW] Failed to create donation record for {phone_number}. Flow category was '{flow_category}'.")
         return
+    logger.info(f"[DONATION_REVIEW] Donation created with reference: {donation.reference_number}")
 
     # --- Send the Review and Payment CTA ---
     review_lines.append(f"\n{_get_message('donor_name_label', lang)} {donor_details['donor_name']}")
@@ -779,17 +820,100 @@ def send_donation_review(phone_number: str, session) -> None:
     review_lines.append(f"{_get_message('donor_mobile_label', lang)} {donor_details['donor_mobile']}")
 
     review_message = "\n".join(review_lines)
+    logger.debug(f"[DONATION_REVIEW] Sending review message to {phone_number}:\n{review_message}")
     whatsapp_service.send_text_message(phone_number, review_message)
 
+    logger.info(f"[DONATION_REVIEW] Sending Pay Now CTA to {phone_number} for donation {donation.reference_number}.")
+    # This now sends a static URL defined in settings.
     send_pay_now_cta(phone_number, donation.reference_number, donation.amount, lang)
     whatsapp_service.send_text_message(phone_number, _get_message("conversation_ended", lang))
     SessionService.clear(session)
 
 
 def _move_to_next_step_after_instagram(phone_number: str, session) -> None:
-    """Helper to transition to the correct next step after Instagram ID handling."""
+    """
+    Helper to transition to the correct next step after Instagram ID handling.
+    This is now consistently AWAITING_LOCATION for all flows.
+    """
     lang = session.language
+    logger.info(f"[_move_to_next_step_after_instagram] Phone: {phone_number}. Current state: {session.current_state}. Moving to AWAITING_LOCATION.")
 
     # For all flows, the next step is now to request the user's location.
     SessionService.update_state(session, "AWAITING_LOCATION")
     send_location_request(phone_number, lang)
+
+
+# --- Helper functions for SessionService.resume_session ---
+
+def _send_food_quantity_prompt(session: WhatsAppSession) -> None:
+    """Re-sends the prompt for food item quantity."""
+    phone_number = session.whatsapp_phone_number
+    lang = session.language or "en"
+    data = session.session_data or {}
+    food_item = data.get("selected_food_item")
+
+    if not food_item:
+        logger.error(f"[_send_food_quantity_prompt] No selected_food_item in session for {phone_number}. Resetting session.")
+        whatsapp_service.send_text_message(phone_number, _get_message("unrecognized_command", lang))
+        SessionService.clear(session)
+        return
+
+    logger.info(f"[_send_food_quantity_prompt] Re-prompting {phone_number} for food quantity for {food_item.get('name')}.")
+    whatsapp_service.send_text_message(
+        phone_number,
+        f"✅ {_get_message('item_selected', lang, item_name=food_item.get('name'))}\n{_get_message('item_price', lang, price=food_item.get('price'), unit=food_item.get('unit'))}\n\n{_get_message('ask_quantity', lang)}",
+    )
+
+
+def _send_edu_amount_prompt(session: WhatsAppSession) -> None:
+    """Re-sends the prompt for education donation amount."""
+    phone_number = session.whatsapp_phone_number
+    lang = session.language or "en"
+    data = session.session_data or {}
+    student = data.get("selected_student")
+
+    if not student:
+        logger.error(f"[_send_edu_amount_prompt] No selected_student in session for {phone_number}. Resetting session.")
+        whatsapp_service.send_text_message(phone_number, _get_message("unrecognized_command", lang))
+        SessionService.clear(session)
+        return
+
+    logger.info(f"[_send_edu_amount_prompt] Re-prompting {phone_number} for education amount for {student.get('name')}.")
+    whatsapp_service.send_text_message(phone_number, f"🎓 {student.get('name')}\n\n{_get_message('ask_donation_amount', lang, amount=100)}")
+
+
+def _send_med_amount_prompt(session: WhatsAppSession) -> None:
+    """Re-sends the prompt for medical donation amount."""
+    phone_number = session.whatsapp_phone_number
+    lang = session.language or "en"
+    data = session.session_data or {}
+    patient = data.get("selected_patient")
+
+    if not patient:
+        logger.error(f"[_send_med_amount_prompt] No selected_patient in session for {phone_number}. Resetting session.")
+        whatsapp_service.send_text_message(phone_number, _get_message("unrecognized_command", lang))
+        SessionService.clear(session)
+        return
+
+    logger.info(f"[_send_med_amount_prompt] Re-prompting {phone_number} for medical amount for {patient.get('name')}.")
+    remaining = max(safe_decimal(patient.get('goal_amount', 0)) - safe_decimal(patient.get('raised_amount', 0)), 0)
+    whatsapp_service.send_text_message(
+        phone_number,
+        f"🏥 {patient.get('name')}\n{_get_message('hospital_label', lang)}: {patient.get('hospital')}\n{_get_message('remaining_needed_label', lang)}: ₹{remaining:,.0f}\n\n{_get_message('ask_donation_amount', lang, amount=100)}",
+    )
+
+
+def _send_instagram_prompt(session: WhatsAppSession) -> None:
+    """Re-sends the prompt for Instagram ID."""
+    phone_number = session.whatsapp_phone_number
+    lang = session.language or "en"
+    logger.info(f"[_send_instagram_prompt] Re-prompting {phone_number} for Instagram ID.")
+    whatsapp_service.send_interactive_buttons(
+        phone_number,
+        _get_message("instagram_prompt_body", lang),
+        [
+            {"type": "reply", "reply": {"id": "instagram_enter", "title": _get_message("enter_button", lang)}},
+            {"type": "reply", "reply": {"id": "instagram_skip", "title": _get_message("skip_button", lang)}},
+        ],
+        header_text=_get_message("ask_instagram", lang),
+    )

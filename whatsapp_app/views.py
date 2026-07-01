@@ -148,6 +148,12 @@ def webhook(request):
     from .services.views import webhook_handler
     return webhook_handler(request)
 
+@csrf_exempt
+@require_http_methods(["POST"])
+def flow_data_endpoint(request):
+    """Handle WhatsApp Flow encrypted data"""
+    from .flow_endpoint import flow_data_endpoint as handler
+    return handler(request)
 
 # =============================================
 # INTERACTIVE WHATSAPP SERVICE FUNCTIONS
@@ -293,35 +299,6 @@ Click the button below to proceed to payment."""
     )
 
 
-def send_payment_link(phone_number, donation):
-    """Send payment link via Easebuzz"""
-    from .whatsapp_service import whatsapp_service
-
-    try:
-        body_text = f"""Your donation has been saved successfully.
-
-Grand Total: ₹{donation.amount:,.0f}
-
-Payment Status: Pending
-
-Click the button below to complete your payment."""
-
-        # Using the centralized whatsapp_service to send the message
-        whatsapp_service.send_interactive_cta_url(
-            to_phone_number=phone_number,
-            body_text=body_text,
-            button_text="Pay Now",
-            url=settings.THAAGAM_PAY_NOW_URL,
-            header_text="💳 Complete Your Payment"
-        )
-        # Reset session after sending payment link
-        from .models import WhatsAppSession
-        session = WhatsAppSession.objects.get(whatsapp_phone_number=phone_number)
-        reset_to_menu(phone_number, session)
-    except Exception as e:
-        print(f"❌ Error sending CTA URL button: {str(e)}")
-
-
 # =============================================
 # DONATION CREATION FUNCTIONS
 # =============================================
@@ -448,14 +425,13 @@ Click the button below to complete your payment."""
         reset_to_menu(phone_number, session)
 
 def send_payment_link(phone_number, donation):
-    """Send payment link via Easebuzz"""
+    """Send static payment link"""
     from .whatsapp_service import whatsapp_service
 
     try:
         body_text = f"""Your donation has been saved successfully.
 
 Grand Total: ₹{donation.amount:,.0f}
-
 Payment Status: Pending
 
 Click the button below to complete your payment."""
@@ -464,14 +440,14 @@ Click the button below to complete your payment."""
         whatsapp_service.send_interactive_cta_url(
             to_phone_number=phone_number,
             body_text=body_text,
-            button_text="Pay Now",
+            button_text="💳 Pay Now",
             url=settings.THAAGAM_PAY_NOW_URL,
             header_text="💳 Complete Your Payment"
         )
         # Reset session after sending payment link
         from .models import WhatsAppSession
         session = WhatsAppSession.objects.get(whatsapp_phone_number=phone_number)
-        reset_to_menu(phone_number, session)
+        reset_to_menu(phone_number, session) # This will clear the session and send the main menu
     except Exception as e:
         print(f"❌ Error sending CTA URL button: {str(e)}")
 
@@ -912,92 +888,6 @@ def handle_chatbot_state(phone_number, session, msg_text, msg_text_raw):
     
     else:
         send_text_message(phone_number, "❌ I didn't understand that. Please type 'Hi' to restart.")
-
-
-# =============================================
-# EASEBUZZ CALLBACK
-# =============================================
-
-@csrf_exempt
-@require_http_methods(["POST"])
-def easebuzz_callback(request):
-    """Webhook callback from Easebuzz payment gateway"""
-    try:
-        data = request.POST.dict()
-        print(f"Easebuzz callback received: {json.dumps(data, indent=2)}")
-        
-        txnid = data.get('txnid')
-        status = data.get('status')
-        reference_number = data.get('udf1', '')
-        
-        if not reference_number:
-            return HttpResponse("Missing reference number", status=400)
-        
-        from .models import Donation
-        try:
-            donation = Donation.objects.get(reference_number=reference_number)
-        except Donation.DoesNotExist:
-            print(f"Donation with reference {reference_number} not found")
-            return HttpResponse("Donation not found", status=404)
-        
-        if status == 'success':
-            donation.payment_status = 'COMPLETED'
-            donation.payment_id = txnid
-            donation.payment_response = data
-            donation.save()
-            
-            body_text = f"""🎉 *Payment Successful!*
-
-Thank you for your generous donation!
-
-🔖 *Reference:* {donation.reference_number}
-🎯 *Cause:* {donation.get_cause_display()}
-💰 *Amount:* ₹{donation.amount:,.0f}
-
-Your support makes a difference! ❤️"""
-            
-            buttons = [
-                {'type': 'reply', 'reply': {'id': 'menu', 'title': '🏠 Main Menu'}},
-                {'type': 'reply', 'reply': {'id': 'donate', 'title': '💝 Donate Again'}}
-            ]
-            
-            whatsapp_service.send_interactive_buttons(
-                donation.whatsapp_phone_number,
-                body_text,
-                buttons,
-                header_text='✅ Payment Successful'
-            )
-            
-        elif status == 'failure':
-            donation.payment_status = 'FAILED'
-            donation.payment_response = data
-            donation.save()
-            
-            body_text = f"""❌ *Payment Failed*
-
-Your payment for donation {donation.reference_number} has failed.
-
-Please try again or contact us for support."""
-            
-            buttons = [
-                {'type': 'reply', 'reply': {'id': 'donate', 'title': '💝 Try Again'}},
-                {'type': 'reply', 'reply': {'id': 'menu', 'title': '🏠 Main Menu'}}
-            ]
-            
-            whatsapp_service.send_interactive_buttons(
-                donation.whatsapp_phone_number,
-                body_text,
-                buttons,
-                header_text='❌ Payment Failed'
-            )
-        
-        return HttpResponse("Callback processed successfully")
-        
-    except Exception as e:
-        print(f"Error in easebuzz callback: {str(e)}")
-        import traceback
-        traceback.print_exc()
-        return HttpResponse("Error", status=500)
 
 
 # =============================================

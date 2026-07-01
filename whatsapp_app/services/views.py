@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import logging
 from typing import Any, Dict, Tuple
 
 from django.http import HttpRequest, HttpResponse
@@ -12,6 +13,8 @@ from whatsapp_app.services.chatbot import (
     handle_text_message,
 )
 from whatsapp_app.services.session_service import SessionService
+
+logger = logging.getLogger(__name__)
 
 
 def _parse_message(message: Dict[str, Any]) -> Tuple[str, str]:
@@ -31,6 +34,11 @@ def _parse_message(message: Dict[str, Any]) -> Tuple[str, str]:
     if msg_type == "location":
         return "location", message.get("location", {})
 
+    # This part was already added in the previous turn, but I'll ensure logging is consistent.
+    # The requirement explicitly states to ignore statuses.
+    if message.get("statuses"):
+        return "status", ""
+
     return "unsupported", ""
 
 
@@ -40,49 +48,49 @@ def webhook_handler(request: HttpRequest) -> HttpResponse:
         return HttpResponse(status=405)
 
     payload = json.loads(request.body or b"{}")
-
-    print("=" * 60)
-    print("[WEBHOOK] RECEIVED")
-    print(f"[WEBHOOK] RAW REQUEST BODY: {request.body[:500] if request.body else 'EMPTY'}")
-    print(f"[WEBHOOK] INCOMING JSON PAYLOAD: {json.dumps(payload)[:500] if payload else 'EMPTY'}")
+    logger.debug(f"[WEBHOOK] Incoming payload: {json.dumps(payload)}")
 
     for entry in payload.get("entry", []) or []:
         for change in entry.get("changes", []) or []:
             value = change.get("value", {}) or {}
 
+            # Handle status updates separately from messages
+            if "statuses" in value:
+                for status in value.get("statuses", []):
+                    logger.info(f"[WEBHOOK] Ignored status event: {status.get('status')} for {status.get('recipient_id')}")
+                continue
+
+            # Handle incoming messages
             for message in value.get("messages", []) or []:
                 phone_number = message.get("from")
                 if not phone_number:
+                    logger.warning("[WEBHOOK] Message received without a 'from' number.")
                     continue
 
-                print(f"[PHONE] {phone_number}")
+                logger.info(f"[WEBHOOK] Processing message from {phone_number}")
 
                 session = SessionService.get_or_create(phone_number)
-
-                # Debug: capture parsing correctness for numeric validation issues
-                current_state = session.current_state
-                print(f"[SESSION] CURRENT STATE: {current_state}")
-                print(f"[SESSION] EXPECTED (for FOOD qty): FOOD_FORM_QUANTITY")
-                print(f"[MESSAGE] TYPE: {message.get('type')}")
-                print(f"[MESSAGE] RAW: {repr(message)}")
+                logger.info(f"[WEBHOOK] Session for {phone_number} in state: {session.current_state}")
 
                 msg_kind, content = _parse_message(message)
-                print(f"[PARSE] MSG_KIND: {msg_kind}")
-                print(f"[PARSE] CONTENT: {repr(content)}")
 
                 if msg_kind == "text":
-                    # For numeric validation steps, ONLY use text body
-                    print(f"[ROUTE] CALLING handle_text_message")
-                    print(f"[ROUTE] ARGUMENT: {repr((content or '').strip())}")
+                    logger.info(f"[WEBHOOK] Incoming Text Message from {phone_number}: '{content}'")
                     handle_text_message(phone_number, (content or "").strip(), session)
+
                 elif msg_kind == "interactive":
-                    print(f"[ROUTE] CALLING handle_interactive_selection")
+                    logger.info(f"[WEBHOOK] Incoming Interactive Reply from {phone_number}: ID='{content}'")
                     handle_interactive_selection(phone_number, content or "", session)
+
                 elif msg_kind == "location":
-                    print(f"[ROUTE] CALLING handle_location_message")
+                    logger.info(f"[WEBHOOK] Incoming Location Message from {phone_number}")
                     handle_location_message(phone_number, content or {}, session)
-                else:
-                    # ignore
+
+                elif msg_kind == "status":
+                    # Already handled above, but we log here for clarity if logic changes
                     pass
+
+                else:
+                    logger.warning(f"[WEBHOOK] Ignored unsupported message type '{message.get('type')}' from {phone_number}.")
 
     return HttpResponse(json.dumps({"status": "success"}), content_type="application/json", status=200)

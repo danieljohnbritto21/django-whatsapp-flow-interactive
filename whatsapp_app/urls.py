@@ -15,7 +15,7 @@ urlpatterns = [
     path('test-patients/', views.test_patients, name='test_patients'),
     
     # Other endpoints
-    path('easebuzz-callback/', views.easebuzz_callback, name='easebuzz_callback'),
     path('upload-logo/', views.upload_logo, name='upload_logo'),
     path('flow-endpoint/', views.flow_endpoint, name='flow_endpoint'),
+    path('flow-data-endpoint/', views.flow_data_endpoint, name='flow_data_endpoint'),
 ]
